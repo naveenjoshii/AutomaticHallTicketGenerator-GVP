@@ -1,0 +1,10 @@
+{"_id":{"$oid":"5d4f259a9a3e6b213f3474c4"},"elective_no":"1","elective_name":"ENGINEERING SCIENCE ELECTIVE"}
+{"_id":{"$oid":"5d4f259a9a3e6b213f3474c5"},"elective_no":"2","elective_name":"ENGINEERING SCIENCE ELECTIVE LAB"}
+{"_id":{"$oid":"5d4f259a9a3e6b213f3474c6"},"elective_no":"3","elective_name":"BASIC SCIENCE ELECTIVE"}
+{"_id":{"$oid":"5d4f259a9a3e6b213f3474c7"},"elective_no":"4","elective_name":"PROFESSIONAL ELECTIVE-I"}
+{"_id":{"$oid":"5d4f259a9a3e6b213f3474c8"},"elective_no":"5","elective_name":"PROFESSIONAL ELECTIVE-II"}
+{"_id":{"$oid":"5d4f259a9a3e6b213f3474c9"},"elective_no":"6","elective_name":"PROFESSIONAL ELECTIVE-III"}
+{"_id":{"$oid":"5d4f259a9a3e6b213f3474ca"},"elective_no":"7","elective_name":"PROFESSIONAL ELECTIVE-IV"}
+{"_id":{"$oid":"5d4f259a9a3e6b213f3474cb"},"elective_no":"8","elective_name":"PROFESSIONAL ELECTIVE-V"}
+{"_id":{"$oid":"5d4f259a9a3e6b213f3474cc"},"elective_no":"9","elective_name":"PROFESSIONAL ELECTIVE-VI"}
+{"_id":{"$oid":"5d4f259a9a3e6b213f3474cd"},"elective_no":"10","elective_name":"SKILL BASED LAB ELECTIVE-I"}

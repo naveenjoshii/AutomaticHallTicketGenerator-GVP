@@ -1,0 +1,1381 @@
+app.pyfrom flask import Flask, render_template, request, make_response, session, redirect, url_for
+import pdfkit
+from pymongo import MongoClient
+from bs4 import BeautifulSoup
+import bcrypt
+import json
+import requests
+
+client = MongoClient("mongodb://localhost:27017/")
+db3 = client['Users_info']
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'DontTellAnyone'
+course = ''
+branch = ''
+semester = ''
+month = ''
+year = ''
+reg=''
+@app.route('/semester', methods = ['POST', 'GET'])
+def hello_world():
+    if request.method == 'POST':
+        global course, branch, semester, month, year,reg
+        course = request.form['course']
+        branch = request.form['branch']
+        semester = request.form['sem']
+        month = request.form['semMonth']
+        year = request.form['year']
+        reg = request.form['reg']
+        branch = branch.upper()
+        db = client[branch]
+        user = semester
+        ele=[]
+        sub=[]
+        labs=[]
+        labelec=[]
+        eleres={}
+        labres={}
+        collection = db[user.lower()]
+        db2 = client['electives']
+        eke = db2['electives']
+        g =collection.find({},{"_id":0})
+        for i in g:
+            if i['elective']!="0" and i['lab']=="0":
+                ele.append(i)
+            elif i['lab']!="1":
+                sub.append(i)
+            elif i['elective']!="0" and i['lab']=="1" :
+                labelec.append(i)
+            else:
+                labs.append(i)
+        for i in ele:
+            c = eke.find_one({"elective_no":i['elective']})
+            eleres[i['elective']] = c['elective_name']
+        for j in labelec:
+            d = eke.find_one({"elective_no":j['elective']})
+            labres[j['elective']] = d['elective_name']
+        sub_ele = dict()
+        for key in eleres:
+            sub_ele[ eleres[key] ] = [ (x['subject'], x['code']) for x in ele if x['elective'] == key]
+        lab_ele = dict()
+        for key in labres:
+            lab_ele[ labres[key] ] = [ (x['subject'], x['code']) for x in labelec if x['elective'] == key ]
+    return render_template('newhello.html',sub= sub ,labs= labs, eleres= sub_ele, labres= lab_ele)
+@app.route('/select_semester_error')
+def select_semester_error():
+    return render_template('index.html')
+
+@app.route('/check/<sub>/<labs>/<ele_res>/<lab_res>',methods=['POST','GET'])
+def check(sub,labs,ele_res,lab_res):
+    if request.method=='POST':
+        ele_res = list(ele_res.split("'"))
+        lab_res = list(lab_res.split("'"))
+        sub_ele = list()
+        for i in ele_res:
+            i=i.strip()
+            if not i in ",[]":
+                print(ele_res)
+                try:
+                    val = request.form[i]
+                except:
+                    return render_template('newhello.html',error="yes")
+                val = list(val.split("'"))[1:-1]
+                val = (val[0], val[2])
+                sub_ele.append(val)
+        lab_ele = list()
+        for i in lab_res:
+            i=i.strip()
+            if not i in ",[]":
+                try:
+                    val = request.form[i]
+                except:
+                    return render_template('newhello.html',error="yes")
+                val = list(val.split("'"))[1:-1]
+                val = (val[0], val[2])
+                lab_ele.append(val)
+        global course, branch, semester, month, year,reg
+        roll_no = session['userrol']
+        users = db3["user_data"]
+        login_user = users.find_one({'roll' : roll_no})
+        json_acceptable_string = sub.replace("'", "\"")
+        d = json.loads(json_acceptable_string)
+        json_acceptable_string = labs.replace("'", "\"")
+        e = json.loads(json_acceptable_string)
+        rendered = render_template('Studentform.html',subj=d,subj_ele=sub_ele,lab=e,lab_ele=lab_ele, course=course, branch=branch, month=month, year=year, semester=semester, roll_no=session['userrol'], name=login_user['name'],reg=reg)
+        pdf = pdfkit.from_string(rendered, False)
+        respose = make_response(pdf)
+        respose.headers['Content-Type'] = 'application/pdf'
+        respose.headers['Content-Disposition'] = 'inline;filename=hallticket.pdf'
+    return respose
+
+@app.route('/view_subjs/<course>/<branch>/<sem>', methods=['POST','GET'])
+def view_subjects(course, branch, sem):
+    branch = branch.upper()
+    sem = sem.lower()
+    col_elec = client.electives
+    col_elect = col_elec.electives
+    col_elect = {x['elective_no']: x['elective_name']  for x in col_elect.find({}, {"_id": 0})}
+
+    collection = client[branch]
+    collection = collection[sem]
+
+    subjs_list = list()
+    for row in collection.find():
+        d = dict()
+        d['subject'] = row['subject']
+        d['code'] = row['code']
+        if row['elective'] == '0':
+            d['elective'] = "Not an Elective"
+        else:
+            d['elective'] = col_elect[row['elective']]
+        d['lab'] = 'No' if row['lab'] == '0' else 'Yes'
+        subjs_list.append(d)
+        del d
+
+    return render_template('view_subjects.html', subjects= subjs_list)
+
+@app.route('/apply_changes/<course>/<branch>/<sem>', methods=['POST','GET'])
+def apply_changes(course, branch, sem):
+    sem = sem.lower()
+    col = client[branch]
+    col = col[sem]
+    if request.method == "POST":
+        result = list()
+        col.remove({})
+        try:
+            index = 1
+            subj = request.form['subject' + str(index)]
+            while subj != None or subj != "":
+                d = dict()
+                d['subject'] = subj
+                d['code'] = request.form['code' + str(index)]
+                d['elective'] = request.form['elective' + str(index)]
+                d['lab'] = request.form['lab' + str(index)]
+                result.append(d)
+                del d
+                index += 1
+                subj = request.form['subject'+ str(index)].strip()
+        except Exception as e:
+            for row in result:
+                col.insert(row)
+
+    return render_template('edit_sucess.html')
+
+
+@app.route('/edit_subjs/<course>/<branch>/<sem>', methods=['POST','GET'])
+def edit_subjects(course, branch, sem):
+    branch = branch.upper()
+    sem = sem.lower()
+
+    col_elec = client.electives
+    col_elect = col_elec.electives
+    col_elect = {x['elective_no']: x['elective_name']  for x in col_elect.find({}, {"_id": 0})}
+
+    collection = client[branch]
+    collection = collection[sem]
+
+    subjs_list = list()
+    for row in collection.find():
+        d = dict()
+        d['subject'] = row['subject']
+        d['code'] = row['code']
+        if row['elective'] == '0':
+            d['elective'] = "Not an Elective"
+        else:
+            d['elective'] = col_elect[row['elective']]
+        d['lab'] = 'No' if row['lab'] == '0' else 'Yes'
+        subjs_list.append(d)
+        del d
+    # print(subjs_list)
+    return render_template('edit_subjects.html', subjects=subjs_list, electives=col_elect, course= course, branch=branch, sem=sem )
+@app.route('/admin_op',methods=['POST','GET'])
+def admin_op():
+    return redirect(url_for('admin_operations'))
+
+@app.route('/add_subject/<course>/<branch>/<sem>',methods= ['POST', 'GET'])
+def add_subject(course, branch, sem):
+    if request.method == 'POST':
+        if request.form['operation'] == 'Add Subject':
+            branch = branch.upper()
+            sem = sem.lower()
+            col = client[branch]
+            col = col[sem]
+            existing_subj = col.find_one({'code' : request.form['code']})
+            if existing_subj is None:
+                col.insert({'subject': request.form['subject'], 'code': request.form['code'], 'elective':request.form['elective'], 'lab': request.form['lab']})
+            else:
+                col.update({'code': request.form['code']}, {'subject': request.form['subject'], 'elective':request.form['elective'], 'lab': request.form['lab']})
+
+        return render_template('add_subj_sucess.html')
+    col_elect = client.electives
+    col_elect = col_elect.electives
+    col_elect = {x['elective_no']: x['elective_name']  for x in col_elect.find({}, {"_id": 0})}
+    return render_template('add_subject.html', course=course, branch=branch, sem=sem, electives=col_elect)
+
+@app.route('/admin', methods= ['POST', 'GET'])
+def admin_operations():
+    if request.method == "POST":
+        if request.form['operation'] == 'VIEW SUBJECTS':
+            return redirect(url_for('view_subjects',course=request.form['course'], branch=request.form['branch'], sem=request.form['sem']))
+        elif request.form['operation'] == 'ADD SUBJECT':
+            return redirect(url_for('add_subject',course=request.form['course'], branch=request.form['branch'], sem=request.form['sem']))
+        else:
+            return redirect(url_for('edit_subjects',course=request.form['course'], branch=request.form['branch'], sem=request.form['sem']))
+    return render_template('admin.html')
+
+@app.route('/login', methods=['POST','GET'])
+def login():
+    if request.method == "POST":
+        if request.form['userrol'] == "admin" and request.form['userpsw'] == "admin123":
+            return render_template("admin.html")
+
+        users = db3["user_data"]
+        login_user = users.find_one({'roll' : request.form['userrol']})
+        if login_user:
+            if request.form['userpsw'] == login_user['password']:
+                session['userrol'] = request.form['userrol']
+                return redirect(url_for('index'))
+        return 'Invalid username/password combination'
+    return render_template('login.html')
+
+@app.route('/reg_sucess',methods=['POST','GET'])
+def reg_sucess():
+    return redirect(url_for('index'))
+
+@app.route('/register', methods=['POST', 'GET'])
+def register():
+    error = ""
+    psdError = ""
+    if request.method == 'POST':
+        users = db3["user_data"]
+        if len(request.form['userrol']) == 10 and len(request.form['userpsw']) > 6 and len(request.form['username'])>0 and len(request.form['useremail']) > 0 :
+            existing_user = users.find_one({'roll' : request.form['userrol']})
+            if existing_user is None:
+                users.insert({'roll': request.form['userrol'], 'password': request.form['userpsw'], 'name':request.form['username'], 'email': request.form['useremail']})
+                session['userrol'] = request.form['userrol']
+                return render_template('reg_sucess.html')
+
+            return 'User already exists!'
+        else:
+            if len(request.form['userpsw']) < 6:
+                psdError = "Length of password must be greater than 6"
+            error = "Enter all the details"
+    return render_template('register.html', error = error, psdError = psdError)
+@app.route('/admin_login')
+def admin_login():
+    return render_template('admin_login.html')
+
+@app.route('/')
+def index():
+    if 'userrol' in session:
+        return render_template('index.html')
+    return render_template('home.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('userrol', None)
+    return render_template('home.html')
+
+if __name__ == '__main__':
+    app.secret_key = 'mysecret'
+    app.run(debug=True)
+    app.run()
+
+insert.py
+from pymongo import MongoClient
+client = MongoClient()
+
+# insertion in CIVIL database
+db = client.CIVIL
+
+collection = db.one
+one = [
+    {"subject":"English", "code": "15HE1101", "elective": "0", "lab": "0"},
+    {"subject":"Mathematics-I", "code": "15BM1101", "elective": "0", "lab": "0"},
+    {"subject":"Principles of Chemical Engineering ","code":"15CH1101","elective":"0","lab":"0"},
+    {"subject":"Physical Chemistry ","code":" 15BC1105 ","elective":"0","lab":"0"},
+    {"subject":"Basic Electrical Engineering","code":"15EE1153","elective":"1","lab":"0"},
+    {"subject":"Elements Of EE & ME","code":" 15EM1101 ","elective":"1","lab":"0"},
+    {"subject":"Electronics Engineering","code":" 15EC1145","elective":"1","lab":"0"},
+    {"subject":"Engineering Workshop","code":" 15MT1101 ","elective":"0","lab":"1"},
+    {"subject":"English Language Lab","code":" 15HE1102 ","elective":"0","lab":"1"},
+    {"subject":"Physical Chemistry Lab ","code":"15BC1106","elective":"0","lab":"1"},
+]
+collection.insert_many(one)
+
+collection = db.two
+two = [
+    {"subject":"Mathematics-II","code":" 15BM1102","elective":"0","lab":"0"},
+    {"subject":"Physics","code":"15BP1101","elective":"0","lab":"0"},
+    {"subject":"Engineering Mechanics","code":" 15ME1101 ","elective":"0","lab":"0"},
+    {"subject":"Organic Chemistry","code":"15BC1107","elective":"0","lab":"0"},
+    {"subject":"Computer programming through-C","code":"15CT1102","elective":"0","lab":"0"},
+    {"subject":"Engineering Drawing","code":" 15ME1102 ","elective":"0","lab":"1"},
+    {"subject":"Physics Lab","code":"15BP1102","elective":"0","lab":"1"},
+    {"subject":"Computer Programming Lab ","code":"15CT1103","elective":"0","lab":"1"},
+    {"subject":"Organic Chemistry Lab","code":" 15BC1108 ","elective":"0","lab":"1"},
+]
+collection.insert_many(two)
+
+collection = db.three
+three = [
+    {"subject":"Environmental Chemistry","code":" 15BC1103","elective":"2","lab":"0"},
+    {"subject":"Probability, Statistics & Numerical Methods ","code":"15BM1103","elective":"2","lab":"0"},
+    {"subject":"Random Variables & Numerical Methods ","code":"15BM1107","elective":"2","lab":"0"},
+    {"subject":"Probability and Statistics","code":" 15BM1105  ","elective":"2","lab":"0"},
+    {"subject":"Chemical Engineering Thermodynamics - I","code":" 15CH1102","elective":"0","lab":"0"},
+    {"subject":"Momentum Transfer","code":" 15CH1103","elective":"0","lab":"0"},
+    {"subject":"Chemical Process Calculations","code":" 15CH1104","elective":"0","lab":"0"},
+    {"subject":"Mechanical  Operations","code":" 15CH1105","elective":"0","lab":"0"},
+    {"subject":"Environmental Studies ","code":"15BC1104","elective":"0","lab":"0"},
+    {"subject":"Mechanical Operations Lab ","code":" 15CH1106 ","elective":"0","lab":"1"},
+    {"subject":"Momentum Transfer Lab","code":" 15CH1107 ","elective":"0","lab":"1"},
+]
+collection.insert_many(three)
+
+collection = db.four
+four = [
+    {"subject":"Chemical Technology ","code":"15CH1108","elective":"0","lab":"0"},
+    {"subject":"Process Heat transfer","code":" 15CH1109 ","elective":"0","lab":"0"},
+    {"subject":"Chemical Engineering Thermodynamics -II","code":"15CH1110","elective":"0","lab":"0"},
+    {"subject":"Mass Transfer Operation-I","code":"15CH1111","elective":"0","lab":"0"},
+    {"subject":"Materail Science For Chemical Engineers","code":"15CH1113","elective":"3","lab":"0"},
+    {"subject":"Nano Technology","code":" Nano Technology","elective":"3","lab":"0"},
+    {"subject":"Polymer Engineering ","code":" 15CH1115 ","elective":"3","lab":"0"},
+    {"subject":"Process Instrumentation ","code":"15CH1112 ","elective":"0","lab":"0"},
+    {"subject":"Process Heat transfer Lab ","code":" 15CH1116 ","elective":"0","lab":"1"},
+    {"subject":"Basic Computations Lab ","code":"15CH1117","elective":"0","lab":"1"},
+]
+collection.insert_many(four)
+
+collection = db.five
+five = [
+    {"subject":"Numerical Methods in Chemical Engineering ","code":"15CH1118","elective":"0","lab":"0"},
+    {"subject":"Chemical Reaction Engineering-I","code":" 15CH1119","elective":"0","lab":"0"},
+    {"subject":"Mass Transfer Operation-II","code":"15CH1120","elective":"0","lab":"0"},
+    {"subject":"Industrial Pollution and Control","code":" 15CH1121","elective":"0","lab":"0"},
+    {"subject":"Process Dynamics and Control","code":" 15CH1122","elective":"0","lab":"0"},
+    {"subject":"Green Chemical Engineering ","code":"15CH1123","elective":"4","lab":"0"},
+    {"subject":"Petroleum Refining and Petrochemicals ","code":" 15CH1124 ","elective":"4","lab":"0"},
+    {"subject":"Instrumentation Methods for  Chemical Analysis","code":" 15CH1125 ","elective":"4","lab":"0"},
+    {"subject":"Mass Transfer Operations Lab","code":" 15CH1126","elective":"0","lab":"0"},
+    {"subject":"English ","code":"15HE1101","elective":"5","lab":"0"},
+    {"subject":"  English Language Lab ","code":" 15HE1103 ","elective":"5","lab":"1"},
+    {"subject":"  Management Science ","code":" 15HM1102 ","elective":"5","lab":"0"},
+    {"subject":"  Professional Ethics (16 hrs)","code":" 15HM11PE ","elective":"5","lab":"0"},
+]
+collection.insert_many(five)
+
+collection = db.six
+six = [
+    {"subject":" Management Science ","code":"15HM1102","elective":"0","lab":"0"},
+    {"subject":" Chemical Reaction Engineering-II","code":"15CH1127","elective":"0","lab":"0"},
+    {"subject":" Chemical Plant Design and Economics ","code":" 15CH1128 ","elective":"0","lab":"0"},
+    {"subject":"  Energy Engineering  ","code":"15CH1129","elective":"6","lab":"0"},
+    {"subject":"  Corrosion Engineering ","code":"15CH1130","elective":"6","lab":"0"},
+    {"subject":"  Safety & Hazard Analysis ","code":"15CH1131","elective":"6","lab":"0"},
+    {"subject":" Air pollution ","code":"15CH1132","elective":"7","lab":"0"},
+    {"subject":" Novel Separation Processes ","code":" 15CH1133 ","elective":"7","lab":"0"},
+    {"subject":" Environmental Biotechnology ","code":" 15CH1134 ","elective":"7","lab":"0"},
+    {"subject":" Industry Lectures (16 hrs) ","code":" 15CH11IL ","elective":"0","lab":"0"},
+    {"subject":" Process Dynamics and Control Lab ","code":"15CH1135","elective":"0","lab":"1"},
+    {"subject":" Chemical Reaction Engineering Lab ","code":" 15CH1136 ","elective":"0","lab":"1"},
+]
+collection.insert_many(six)
+
+collection = db.seven
+seven = [
+    {"subject":" Chemical  Process  Equipment   Design","code":"15CH1137 ","elective":"0","lab":"0"},
+    {"subject":" Transport Phenomena","code":"15CH1138","elective":"0","lab":"0"},
+    {"subject":"  Process Modeling and Simulation ","code":"15CH1139","elective":"8","lab":"0"},
+    {"subject":"  Chemical Engineering Mathematics ","code":" 15CH1140 ","elective":"8","lab":"0"},
+    {"subject":"  Waste Water Treatment ","code":"15CH1141","elective":"8","lab":"0"},
+    {"subject":"  Biochemical Engineering ","code":"15CH1142","elective":"8","lab":"0"},
+    {"subject":"  Optimization of Chemical Processes ","code":"15CH1143","elective":"9","lab":"0"},
+    {"subject":"  Solid Waste Management ","code":"15CH1144","elective":"9","lab":"0"},
+    {"subject":"  Computational Fluid Dynamics ","code":"15CH1145","elective":"9","lab":"0"},
+    {"subject":"  Downstream processing in Bio processing","code":"15CH1146","elective":"9","lab":"0"},
+    {"subject":"    COMSOL (24 hrs)","code":" 15CH11S1 ","elective":"10","lab":"0"},
+    {"subject":"    HEN (24 hrs)","code":"15CH11S4","elective":"10","lab":"0"},
+    {"subject":" Computer Aided Design of Chemical Equipment Lab","code":" 15CH1147 ","elective":"0","lab":"1"},
+    {"subject":" Control System Design, Simulation and Optimization lab ","code":" 15CH1148 ","elective":"0","lab":"1"},
+    {"subject":" Industry Oriented Mini Project ","code":" 15CH11MP ","elective":"0","lab":"0"},
+]
+collection.insert_many(seven)
+collection = db.eight
+eight=[{"subject":"Project Work ","code":"15ME11PW","elective":"0","lab":"0"},
+{"subject":"Professional Ethics","code":"15HM11PE","elective":"0","lab":"0"},
+{"subject":"Social Work ","code":" 15ME11SW ","elective":"0","lab":"0"},
+{"subject":"Disaster Management","code":"15CH1149","elective":"11","lab":"0"},
+{"subject":"Green Buildings and Infrastructure","code":"15CE1164","elective":"11","lab":"0"},
+{"subject":"Biomedical Instrumentation","code":"15CE1166","elective":"11","lab":"0"},
+{"subject":"Renewable Sources of Energy","code":"15EC1148","elective":"11","lab":"0"},
+{"subject":"Project Management","code":"15ME1151","elective":"11","lab":"0"},
+{"subject":"E – Commerce","code":"15CS1109","elective":"11","lab":"0"},
+{"subject":"Database Management Systems","code":"15CT1108","elective":"11","lab":"0"},
+{"subject":"Electrical Safety Management","code":"15EE1149","elective":"11","lab":"0"},
+{"subject":"Special Electrical Machines for Industrial Applications","code":"15EE1152","elective":"11","lab":"0"},
+{"subject":"Object Oriented Programming Through JAVA","code":"15CT1109","elective":"11","lab":"0"},
+{"subject":"Entrepreneurship and Small Business Management","code":"15HM1105","elective":"11","lab":"0"},
+{"subject":"Financial Management","code":"15HM1105","elective":"11","lab":"0"},
+{"subject":"Management of Technology","code":"15HM1106","elective":"11","lab":"0"},
+{"subject":"Disaster Management","code":"15CH1149","elective":"12","lab":"0"},
+{"subject":"Green Buildings and Infrastructure","code":"15CE1164","elective":"12","lab":"0"},
+{"subject":"Biomedical Instrumentation","code":"15CE1166","elective":"12","lab":"0"},
+{"subject":"Renewable Sources of Energy","code":"15EC1148","elective":"12","lab":"0"},
+{"subject":"Project Management","code":"15ME1151","elective":"12","lab":"0"},
+{"subject":"E – Commerce","code":"15CS1109","elective":"12","lab":"0"},
+{"subject":"Database Management Systems","code":"15CT1108","elective":"12","lab":"0"},
+{"subject":"Electrical Safety Management","code":"15EE1149","elective":"12","lab":"0"},
+{"subject":"Special Electrical Machines for Industrial Applications","code":"15EE1152","elective":"12","lab":"0"},
+{"subject":"Object Oriented Programming Through JAVA","code":"15CT1109","elective":"12","lab":"0"},
+{"subject":"Entrepreneurship and Small Business Management","code":"15HM1105","elective":"12","lab":"0"},
+{"subject":"Financial Management","code":"15HM1105","elective":"12","lab":"0"},
+{"subject":"Management of Technology","code":"15HM1106","elective":"12","lab":"0"},
+{"subject":"Banking, Financial Services and Insurance","code":"15FE1112","elective":"13","lab":"0"},
+{"subject":"Business Intelligence","code":"15FE1102","elective":"13","lab":"0"},
+{"subject":"Basics of Securities and Stock Market","code":"15FE1109","elective":"13","lab":"0"},
+{"subject":"Entrepreneurial Finance","code":"15FE1106","elective":"13","lab":"0"},
+{"subject":"E - Tailing","code":"15FE1111","elective":"13","lab":"0"},
+{"subject":"Intellectual Property Rights and Patents","code":"15FE1101","elective":"13","lab":"0"},
+{"subject":"Life Skills","code":"15FE1107","elective":"13","lab":"0"},
+{"subject":"Psychology","code":"15FE1103","elective":"13","lab":"0"},
+{"subject":"Spread Sheet Modeling for Business","code":"15FE1108","elective":"13","lab":"0"},
+{"subject":"Women Entrepreneurship","code":"15FE1105","elective":"13","lab":"0"},
+{"subject":"Introduction to Cyber Security","code":"15FE1114","elective":"13","lab":"0"},
+]
+collection.insert_many(eight)
+
+# insertion in electives database
+db = client.electives
+
+collection = db.electives
+electives = [
+    {"elective_no":"1","elective_name":"ENGINEERING SCIENCE ELECTIVE"},
+    {"elective_no":"2","elective_name":"ENGINEERING SCIENCE ELECTIVE LAB"},
+    {"elective_no":"3","elective_name":"BASIC SCIENCE ELECTIVE"},
+    {"elective_no":"4","elective_name":"PROFESSIONAL ELECTIVE-I"},
+    {"elective_no":"5","elective_name":"PROFESSIONAL ELECTIVE-II"},
+    {"elective_no":"6","elective_name":"PROFESSIONAL ELECTIVE-III"},
+    {"elective_no":"7","elective_name":"PROFESSIONAL ELECTIVE-IV"},
+    {"elective_no":"8","elective_name":"PROFESSIONAL ELECTIVE-V"},
+    {"elective_no":"9","elective_name":"PROFESSIONAL ELECTIVE-VI"},
+    {"elective_no":"10","elective_name":"SKILL BASED LAB ELECTIVE-I"},
+    {"elective_no":"11","elective_name":"OPEN ELECTIVE-I"},
+    {"elective_no":"12","elective_name":"OPEN ELECTIVE-II"},
+    {"elective_no":"13","elective_name":"REGULAR ELECTIVE-II"},
+    {"elective_no":"14","elective_name":"ADVANCED FREE ELECTIVE-II"},
+    {"elective_no":"15","elective_name":"SKILL BASED LAB ELECTIVE-II"},
+]
+
+collection.insert_many(electives)
+itpysubjects.py
+from pymongo import MongoClient
+client = MongoClient()
+
+# insertion in CIVIL database
+db = client.MECH
+
+on = db.one
+tw = db.two
+th = db.three
+fr = db.four
+fi = db.five
+si  = db.six
+se = db.seven
+ei = db.eight
+
+
+
+
+o=[{"subject":"English","code":"15HE1101","elective":"0","lab":"0"},
+{"subject":"Mathematics-1","code":"15BM1101","elective":"0","lab":"0"},
+{"subject":"Chemistry","code":"15BC1101","elective":"0","lab":"0"},
+{"subject":"Introduction to Computing","code":"15CT1101","elective":"0","lab":"0"},
+{"subject":"Basic Electrical Engineering","code":"15EE1153","elective":"1","lab":"0"},
+{"subject":"Elements of EE&ME","code":"15EM1101","elective":"1","lab":"0"},
+{"subject":"Electrical Technology","code":"15EE1155","elective":"1","lab":"0"},
+{"subject":"English Language Lab","code":"15HE1102","elective":"0","lab":"0"},
+{"subject":"Chemistry Lab","code":"15BC1102","elective":"0","lab":"1"},
+{"subject":"Basic Electrical Engineering Lab","elective":"2","code":"15EE1154","lab":"1"},
+{"subject":"Electrical Technology Lab","code":"15EE1156","elective":"2","lab":"1"},
+]
+two=[
+{"subject":"Mathematics-II","code":"15BM1102","elective":"0","lab":"0"},
+{"subject":"Physics","code":"15BP1101","elective":"0","lab":"0"},
+{"subject":"Computer Programming Through C","code":"15CT1102","elective":"0","lab":"0"},
+{"subject":"Engineering Mechanics","code":"15ME1101","elective":"0","lab":"0"},
+{"subject":"Electronics Devices and Circuits","code":"15EC1101","elective":"0","lab":"0"},
+{"subject":"Physics Lab","code":"15BP1102","elective":"0","lab":"1"},
+{"subject":"Computer Programming Lab","code":"15CT1103","elective":"0","lab":"1"},
+{"subject":"Engineering Drawing","code":"15ME1102","elective":"0","lab":"1"},
+{"subject":"Engineering Workshop","code":"15MT1101","elective":"0","lab":"1"},
+]
+three=[
+{"subject":"Discrete Mathematical Structures","code":"15BM1106","elective":"0","lab":"0"},
+{"subject":"Managerial Economics And Financial Accounting","code":"15HM1101","elective":"0","lab":"0"},
+{"subject":"Digital Logic Design","code":"15EC1105","elective":"0","lab":"0"},
+{"subject":"Environmental Studies","code":"15BC1104","elective":"0","lab":"0"},
+{"subject":"Computer Organization","code":"15CT1104","elective":"0","lab":"0"},
+{"subject":"Data Structures","code":"15CT1105","elective":"0","lab":"0"},
+{"subject":"Data Structures Lab","code":"15CT1106","elective":"0","lab":"1"},
+{"subject":"Analog and Digital Circuits Lab","code":"15EC1147","elective":"0","lab":"1"},
+]
+four=[
+{"subject":"Design and Analysis of Algorithms","code":"15CT1107","elective":"0","lab":"0"},
+{"subject":"Database Management Systems","code":"15CT1108","elective":"0","lab":"0"},
+{"subject":"Object Oriented Programming Through JAVA","code":"15CT1109","elective":"0","lab":"0"},
+{"subject":"Operating Systems","code":"15CT1110","elective":"0","lab":"0"},
+{"subject":"DBMS Lab","code":"15CT1112","elective":"0","lab":"1"},
+{"subject":"Object Oriented Programming Lab","code":"15CT1113","elective":"0","lab":"1"},
+{"subject":"Environmental Chemistry","code":"15BC1103","elective":"3","lab":"0"},
+{"subject":"Probability, Statistics and Numerical Methods","code":"15BM1103","elective":"3","lab":"0"},
+{"subject":"Random Variables and Numerical Methods","code":"15BM1103","elective":"3","lab":"0"},
+{"subject":"Advanced Data Structures","code":"15CT1111","elective":"4","lab":"0"},
+{"subject":"Application Development  Tools","code":"15IT1101","elective":"4","lab":"0"},
+{"subject":"Scripting Languages","code":"15IT1102","elective":"4","lab":"0"},
+]
+
+five=[{"subject":"Software Engineering","code":"15CT1114","elective":"0","lab":"0"},
+{"subject":"Unix & Shell Programming","code":"15CT1115","elective":"0","lab":"0"},
+{"subject":"Computer Graphics","code":"15CT1116","elective":"0","lab":"0"},
+{"subject":"Embedded Systems - I","code":"15CT1117","elective":"0","lab":"0"},
+{"subject":"Web Programming","code":"15CT1118","elective":"0","lab":"0"},
+{"subject":"Embedded Systems - I Lab","code":"15CT1122","elective":"0","lab":"1"},
+{"subject":"Web Programming Lab","code":"15CT1123","elective":"0","lab":"1"},
+{"subject":"Formal Languages & Automata Theory","code":"15CT1119","elective":"5","lab":"0"},
+{"subject":"Software Testing","code":"15CT1120","elective":"5","lab":"0"},
+{"subject":"ERP & Supply Chain Management","code":"15IT1103","elective":"5","lab":"0"},
+]
+six = [{"subject":"Management Science","code":"15HM1102","elective":"0","lab":"0"},
+{"subject":"Computer Networks","code":"15CT1124","elective":"0","lab":"0"},
+{"subject":"Object Oriented Analysis & Design","code":"15CT1125","elective":"0","lab":"0"},
+{"subject":"Industry Lectures (16 hrs)","code":"15IT11IL","elective":"0","lab":"0"},
+{"subject":"Computer Networks Lab","code":"15CT1131","elective":"0","lab":"1"},
+{"subject":"Software Project Management","code":"15CT1126","elective":"6","lab":"0"},
+{"subject":"Image Processing","code":"15CT1127","elective":"6","lab":"0"},
+{"subject":"Artificial Intelligence","code":"15CT1121","elective":"6","lab":"0"},
+{"subject":"Middleware Technologies","code":"15CT1129","elective":"6","lab":"0"},
+{"subject":"Natural Language Processing","code":"15IT11M2","elective":"7","lab":"0"},
+{"subject":"Multimedia Systems","code":"15IT1105","elective":"7","lab":"0"},
+{"subject":"Information Storage Systems","code":"15CT1128","elective":"7","lab":"0"},
+{"subject":"Principles of Digital Signal Processing","code":"15IT1104","elective":"7","lab":"0"},
+{"subject":"Mobile Communications","code":"15CT1130","elective":"0","lab":"0"},
+{"subject":"Introduction to Machine Learning","code":"15IT11M3","elective":"0","lab":"0"},
+{"subject":"Technical Communication & Soft Skills Lab","code":"15HE1103","elective":"0","lab":"1"},
+]
+seven=[{"subject":"Data Warehousing and Data Mining","code":"15CT1132","elective":"0","lab":"0"},
+{"subject":"Unix Network Programming","code":"15CT1133","elective":"0","lab":"0"},
+{"subject":"Industry Oriented Mini Project","code":"15IT11MP","elective":"0","lab":"0"},
+{"subject":" Information Storage Security and Management","code":"15CT1134","elective":"7","lab":"0"},
+{"subject":"Cloud Computing","code":"15CT1137","elective":"7","lab":"0"},
+{"subject":"Information Security","code":"15IT1107","elective":"7","lab":"0"},
+{"subject":"Big Data Analytics","code":"15CT1135","elective":"7","lab":"0"},
+{"subject":"Information Retrieval Systems","code":"15CT1139","elective":"7","lab":"0"},
+{"subject":"Embedded Systems-II","code":"15CT1136","elective":"8","lab":"0"},
+{"subject":"Wireless Communications","code":"15IT1106","elective":"8","lab":"0"},
+{"subject":"Multi Core Programming","code":"15CT1138","elective":"8","lab":"0"},
+{"subject":"Service Oriented Architecture","code":"15IT1108","elective":"8","lab":"0"},
+{"subject":"Internet of Things","code":"15IT1109","elective":"8","lab":"0"},
+{"subject":"Data Warehousing and  Data Mining Lab","code":"15CT1140","elective":"0","lab":"1"},
+{"subject":"Network Programming Lab","code":"15IT1110","elective":"0","lab":"1"},
+]
+eight=[{"subject":"Project Work ","code":"15ME11PW","elective":"0","lab":"0"},
+{"subject":"Professional Ethics","code":"15HM11PE","elective":"0","lab":"0"},
+{"subject":"Social Work ","code":" 15ME11SW ","elective":"0","lab":"0"},
+{"subject":"Disaster Management","code":"15CH1149","elective":"11","lab":"0"},
+{"subject":"Green Buildings and Infrastructure","code":"15CE1164","elective":"11","lab":"0"},
+{"subject":"Biomedical Instrumentation","code":"15CE1166","elective":"11","lab":"0"},
+{"subject":"Renewable Sources of Energy","code":"15EC1148","elective":"11","lab":"0"},
+{"subject":"Project Management","code":"15ME1151","elective":"11","lab":"0"},
+{"subject":"E – Commerce","code":"15CS1109","elective":"11","lab":"0"},
+{"subject":"Database Management Systems","code":"15CT1108","elective":"11","lab":"0"},
+{"subject":"Electrical Safety Management","code":"15EE1149","elective":"11","lab":"0"},
+{"subject":"Special Electrical Machines for Industrial Applications","code":"15EE1152","elective":"11","lab":"0"},
+{"subject":"Object Oriented Programming Through JAVA","code":"15CT1109","elective":"11","lab":"0"},
+{"subject":"Entrepreneurship and Small Business Management","code":"15HM1105","elective":"11","lab":"0"},
+{"subject":"Financial Management","code":"15HM1105","elective":"11","lab":"0"},
+{"subject":"Management of Technology","code":"15HM1106","elective":"11","lab":"0"},
+{"subject":"Disaster Management","code":"15CH1149","elective":"12","lab":"0"},
+{"subject":"Green Buildings and Infrastructure","code":"15CE1164","elective":"12","lab":"0"},
+{"subject":"Biomedical Instrumentation","code":"15CE1166","elective":"12","lab":"0"},
+{"subject":"Renewable Sources of Energy","code":"15EC1148","elective":"12","lab":"0"},
+{"subject":"Project Management","code":"15ME1151","elective":"12","lab":"0"},
+{"subject":"E – Commerce","code":"15CS1109","elective":"12","lab":"0"},
+{"subject":"Database Management Systems","code":"15CT1108","elective":"12","lab":"0"},
+{"subject":"Electrical Safety Management","code":"15EE1149","elective":"12","lab":"0"},
+{"subject":"Special Electrical Machines for Industrial Applications","code":"15EE1152","elective":"12","lab":"0"},
+{"subject":"Object Oriented Programming Through JAVA","code":"15CT1109","elective":"12","lab":"0"},
+{"subject":"Entrepreneurship and Small Business Management","code":"15HM1105","elective":"12","lab":"0"},
+{"subject":"Financial Management","code":"15HM1105","elective":"12","lab":"0"},
+{"subject":"Management of Technology","code":"15HM1106","elective":"12","lab":"0"},
+{"subject":"Banking, Financial Services and Insurance","code":"15FE1112","elective":"13","lab":"0"},
+{"subject":"Business Intelligence","code":"15FE1102","elective":"13","lab":"0"},
+{"subject":"Basics of Securities and Stock Market","code":"15FE1109","elective":"13","lab":"0"},
+{"subject":"Entrepreneurial Finance","code":"15FE1106","elective":"13","lab":"0"},
+{"subject":"E - Tailing","code":"15FE1111","elective":"13","lab":"0"},
+{"subject":"Intellectual Property Rights and Patents","code":"15FE1101","elective":"13","lab":"0"},
+{"subject":"Life Skills","code":"15FE1107","elective":"13","lab":"0"},
+{"subject":"Psychology","code":"15FE1103","elective":"13","lab":"0"},
+{"subject":"Spread Sheet Modeling for Business","code":"15FE1108","elective":"13","lab":"0"},
+{"subject":"Women Entrepreneurship","code":"15FE1105","elective":"13","lab":"0"},
+{"subject":"Introduction to Cyber Security","code":"15FE1114","elective":"13","lab":"0"},
+]
+#on.insert_many(o)
+# tw.insert_many(two)
+# th.insert_many(three)
+# fr.insert_many(four)
+# fi.insert_many(five)
+# si.insert_many(six)
+# se.insert_many(seven)
+ei.insert_many(eight)
+
+
+register.html
+
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <script type="text/javascript">
+function Confirm(form){
+//alert("Registartion successfull!");
+form.submit();
+}
+</script>
+
+    <meta charset="utf-8">
+    <title>Project</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+  </head>
+  <body>
+
+    <div class="container">
+      <div class="jumbotron">
+
+        <h1>Automatic Hallticket Generator</h1>
+        <h2>Registration</h2>
+        {% if error %}
+         <p><strong>Error:</strong> {{ error }}
+        {% endif %}
+
+        {% if psdError %}
+          <p><strong>Password Error</strong> {{ psdError }}
+        {% endif %}
+
+
+         <form class="form-group" method="POST" action="http://localhost:5000/register">
+          <label for="userrol">Roll Number</label>
+          <input type="text" class="form-control" name="userrol" placeholder="roll number">
+          <label for="userpsw">Password</label>
+          <input type="password" class="form-control" name="userpsw" placeholder="password">
+          <label for="username">Full Name</label>
+          <input type="text" class="form-control" name="username" placeholder="your name">
+          <label for="useremail">Email</label>
+          <input type="email" class="form-control" name="useremail" placeholder="email">
+          <p></p>
+          <input type="submit" class="btn btn-primary" name="login" value="REGISTER" onClick="Confirm(this.form)">
+
+        </form>
+      </div>
+
+    </div>
+
+  </body>
+</html>
+
+
+reg_success.html
+
+<head>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+  </head>
+<body>
+  <br>
+  <center>
+    <form class="form-group" method="POST" action='http://localhost:5000/reg_sucess'>
+    Registration Sucess<br><br>
+    <input type="submit" value="Get Hallticket"/>
+  </form>
+  </center>
+</body>
+
+
+login.html
+
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title>Project</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+  <body>
+    <!-- <nav class=" navbar navbar-expand-lg navbar-light bg-light">
+      <div class="navbar-header">
+          <a class="navbar-brand" href="index.html">Django</a>
+      </div>
+    </nav> -->
+
+    <div class="container">
+      <div class="jumbotron">
+        <h1>Automatic Hallticket Generator</h1>
+        <p></p>
+        <form class="form-group" method="POST" action="http://localhost:5000/login">
+          <label for="userrol">Roll Number</label>
+          <input type="text" class="form-control" name="userrol" placeholder="roll number">
+          <label for="userpsw">Password</label>
+          <input type="password" class="form-control" name="userpsw" placeholder="password">
+          <p></p>
+        <input type="submit" class="btn btn-primary" name="login" value="LOGIN">
+          </form>
+      </div>
+
+    </div>
+
+  </body>
+</html>
+
+home.html
+
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title>Project</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+  <body>
+<br><br><br><br><br>
+    <div class="container">
+        <center><b><h1>AUTOMATION OF SEMESTER HALLTICKET</h1></b>
+        </center>
+
+        <p>
+
+        </p>
+        <br><br>
+        <p>
+
+        </p>
+      <center>
+        <div class="" style="text-align:center">
+          <a href="admin_login" style="width:150px"class="btn form-control btn-success">AdminLogin</a>
+          <a href="login" style="width:150px"class="btn form-control btn-success">StudentLogin</a>
+          <a href="register"style="width:150px" class="btn form-control btn-primary">Register</a>
+        </div>
+</center>
+  </div>
+
+
+  </body>
+</html>
+
+
+index.html
+
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title>Sem Subjects</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+  </head>
+  <body>
+    <div class="container">
+      <div align="right">
+        <br>
+        <a href="logout" class="btn btn-info btn-lg">
+            <span class="glyphicon glyphicon-log-out"></span> Log out
+          </a>
+          <br>
+      </div>
+      <div>
+        <p>
+          
+        </p>
+      </div>
+      <div class="jumbotron">
+        <h2>Select and get your hallticket</h2>
+        <form class="form-group" method="post" action="\semester">
+          <div class="form-group">
+            <label for="course">Course</label>
+            <select class="form-control" name="course">
+                <option>B.Tech</option>
+                <option>M.C.A</option>
+                <option>M.Tech</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="reg">Regulation</label>
+            <select class="form-control" name="reg">
+                <option>Regular</option>
+                <option>Supplementary</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="branch">Branch</label>
+            <select class="form-control" name="branch">
+                <option>IT</option>
+                <option>CSE</option>
+                <option>ECE</option>
+                <option>MECH</option>
+                <option>EEE</option>
+                <option>Chem</option>
+                <option>CIVIL</option>
+            </select>
+          </div>
+          <div class="form-group">
+              <label for="sem">Semester</label>
+              <select class="form-control" name="sem">
+                <option>One</option>
+                <option>Two</option>
+                <option>Three</option>
+                <option>Four</option>
+                <option>Five</option>
+                <option>Six</option>
+                <option>Seven</option>
+                <option>Eight</option>
+             </select>
+          </div>
+          <div class="form-group">
+              <label for="semMonth">Exam Month</label>
+              <select class="form-control" name="semMonth">
+                <option>January</option>
+                <option>February</option>
+                <option>March</option>
+                <option>April</option>
+                <option>May</option>
+                <option>June</option>
+                <option>July</option>
+                <option>August</option>
+                <option>September</option>
+                <option>October</option>
+                <option>November</option>
+                <option>December</option>
+           </select>
+          </div>
+          <div class="form-group">
+              <label for="year">Year</label>
+              <select class="form-control" name="year">
+                <option>2019</option>
+                <option>2020</option>
+                <option>2021</option>
+                <option>2022</option>
+                <option>2023</option>
+                <option>2024</option>
+                <option>2025</option>
+                <option>2026</option>
+             </select>
+          </div>
+          <!-- <label for="userpsw">Password</label>
+          <input type="password" class="form-control" name="userpsw" placeholder="password"> -->
+          <p></p>
+        <input type="submit" class="btn btn-primary" name="submit" value="SUBMIT">
+          </form>
+      </div>
+    </div>
+
+
+  </body>
+</html>
+
+hello.html
+
+<!doctype html>
+<html>
+<head>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+
+  <link rel= "stylesheet" type= "text/css" href= "{{ url_for('static',filename='styles/capstone_css.css') }}">
+
+</head>
+
+   <body>
+     {% if sub%}
+      {% for l in sub %}
+<table border="1">
+            <p > Subject : {{l.subject}} Code :{{l.code}}</p>
+</div>
+</div>
+{% endfor %}
+{% endif %}
+<form action = "{{url_for('check')}}" method = "POST">
+    {% if ele %}
+    <div class="dmf">
+      <table border=1 align="center">
+
+  {% for obj in ele %}
+      <tr>
+          <td>
+              <input type="radio" name="chkbox" value="{{obj}}"> {{obj.subject}}
+              </td>
+          <td>
+              {{obj.code}}
+          </td>
+      </tr>
+  {% endfor %}
+  </table>
+    </div>
+
+
+{% endif %}
+{% if labs %}
+{% for l in labs %}
+<div class="link">
+      <p> Subject :{{l.subject}} Code:{{l.code}}</p>
+</div>
+</div>
+{% endfor %}
+{% endif %}
+{% if labelec %}
+<div class="jan">
+  <table border=1 align="center">
+  {% for obj in labelec %}
+  <tr>
+      <td>
+          <input type="radio" name="chkbox2" value="{{obj}}"> {{obj.subject}}
+        </td>
+      <td>
+          {{obj.code}}
+      </td>
+  {% endfor %}
+  </table>
+</div>
+
+{% endif %}
+<input  class="btn btn-primary"type = "submit" value = "submit" />
+</form>
+   </body>
+</html>
+
+final.html
+
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title></title>
+  </head>
+  <body>
+  
+    {% for j in labs %}
+    <p>{{j.subject}} {{j.code}}</p>
+    {% endfor %}
+    <p>{{str2}}</p>
+
+  </body>
+</html>
+
+studentform.html
+
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="stylesheet" type="text/css" href="css.css">
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+<title> Form</title>
+<style>
+table, th, td {
+  border: 1px solid black;
+  border-collapse:  collapse;
+}
+  #saavn
+{
+text-align: center;
+
+}
+th
+{
+padding: 10px 10px 10px;
+}
+
+</style>
+</head>
+
+<body>
+<!-- <h2>this is my first java script</h2>
+<script type="text/javascript" src = "example.js"></script>
+<p>in this we are going to learn changing the value of src</p>
+<button onclick="document.getElementById('g1').src='pic_bulbon.gif'">turn on the light</button>
+<img id="g1" src="pic_bulboff.gif" style="width: 100px height:100vh">
+<button
+onclick="document.getElememtById('g1').src='pic_bulboff.gif'">turn off light</button> -->
+<div id="saavn">
+<img src="E:\MINI PROJECT\download.jpg" alt="" align="left" width="80px" height="80px" style="margin:10px 40px " >
+<h3 id="ra1"><b>G.V.P COLLEGE OF ENGINEERING(AUTONOMOUS)</b><br></h3>
+          <h4>(approved by AICTE, affilated to JNTU- k.kakinada)<br>
+           madhurawada,visakapatnam - 530 048</h4>
+<p></p>
+           <hr>
+<u><h3>B.Tech/M.Tech/M.C.A- End Semester Examinations</h3></u>
+</div>
+<form  id="g1ra1">
+  <pre>
+    <!-- <p>https://drive.google.com/uc?id=1VBvorxjZ0JYJ2UIzW7OuPWJf1Y5_po4G</p> -->
+<img src="" alt="" align="right" width="120px" height="160px">
+Course/branch:                 <input type="text" name="cou" value="{{course}}">    Semester:      <input type="text" name="sem" value="1">
+
+Month& year of examinations:   <input type="text" name="monthyear" value="{{month}} - {{year}}">    Reg/Supp:      <input type="text" name="reg" value="{{reg}}">
+
+Hall Ticket Number:            <input type="text" name="roll" value="{{roll_no}}">
+
+Name of the cadidate:          <input type="text" name="name" value="{{name}}">
+  </pre>
+
+<table width="100%">
+
+  <tr>
+    <th >Subject Code</th>
+    <th >Subject Name</th>
+  </tr>
+  <tr>
+    <th colspan="2"> Theory </th>
+  </tr>
+  {% if subj %}
+  {% for i in subj %}
+  <tr>
+    <td> {{i.code}}</td>
+    <td>{{i.subject}}</td>
+  </tr>
+  {% endfor %}
+  {% endif %}
+  {% if subj_ele %}
+  {% for i in subj_ele %}
+  <tr>
+    <td>{{i[1]}}</td>
+    <td>{{i[0]}}</td>
+  </tr>
+  {% endfor %}
+  {% endif %}
+  <tr> <th colspan="2"> Labs </th></tr>
+  {% if lab %}
+  {% for i in lab %}
+  <tr>
+    <td> {{i.code}}</td>
+    <td>{{i.subject}}</td>
+  </tr>
+  {% endfor %}
+  {% endif %}
+
+  {% if lab_ele %}
+  {% for i in lab_ele %}
+  <tr>
+    <td>{{i[1]}}</td>
+    <td>{{i[0]}}</td>
+  </tr>
+  {% endfor %}
+  {% endif %}
+</table>
+<div>
+<p>
+
+
+</p>
+<br><br><br><br><br><br><br>
+<p>
+
+
+</p>
+  <div>
+<div>
+<h5>Student Signature&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;Controller of Examination&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;Signature of HOD</h5>
+</div>
+</form>
+</body>
+</html>
+
+admin.html
+
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title>Admin | Project</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+  </head>
+  <body>
+    <div class = "container">
+      <div align="right">
+        <br>
+        <a href="logout" class="btn btn-info btn-lg">
+            <span class="glyphicon glyphicon-log-out"></span> Log out
+          </a>
+          <br>
+      </div>
+      <div>
+        <p>
+
+        </p>
+      </div>
+      <div class = "jumbotron">
+        <h1> Hello ADMIN </h1>
+
+        <h2> Actions: </h2>
+        <form class="form-group" method="post" action="\admin">
+          <div class="form-group">
+            <label for="course">Course</label>
+            <select class="form-control" name="course">
+              <option>B.Tech</option>
+              <option>M.C.A</option>
+              <option>M.Tech</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="branch">Branch</label>
+            <select class="form-control" name="branch">
+              <option>IT</option>
+              <option>CSE</option>
+              <option>ECE</option>
+              <option>MECH</option>
+              <option>EEE</option>
+              <option>Chem</option>
+              <option>CIVIL</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="sem">Semester</label>
+            <select class="form-control" name="sem">
+              <option>One</option>
+              <option>Two</option>
+              <option>Three</option>
+              <option>Four</option>
+              <option>Five</option>
+              <option>Six</option>
+              <option>Seven</option>
+              <option>Eight</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <input type="submit" class="btn btn-primary" name="operation" value="ADD SUBJECT">
+          </div>
+          <div class="form-group">
+            <input type="submit" class="btn btn-primary" name="operation" value="VIEW SUBJECTS">
+          </div>
+          <div class="form-group">
+            <input type="submit" class="btn btn-primary" name="operation" value="EDIT SUBJECTS">
+          </div>
+        </form>
+      </div>
+    </div>
+  </body>
+</html>
+
+admin_login.html
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title>Project</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+  <body>
+    <div class="container">
+      <div class="jumbotron">
+        <h1>Admin Login</h1>
+        <p></p>
+        <form class="form-group" method="POST" action="http://localhost:5000/login">
+          <label for="userrol">Username</label>
+          <input type="text" class="form-control" name="userrol" placeholder="username">
+          <label for="userpsw">Password</label>
+          <input type="password" class="form-control" name="userpsw" placeholder="password">
+          <p></p>
+        <input type="submit" class="btn btn-primary" name="login" value="LOGIN">
+          </form>
+      </div>
+
+    </div>
+
+  </body>
+</html>
+
+add_subject.html
+
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title>Admin | Project</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+  </head>
+  <body>
+    <div class = "container">
+      <div class = "jumbotron">
+        <h1>Enter Subject details</h1>
+        <div class="form-group">
+          <table>
+            <tr><td>Course </td> <td>{{course}}</td></tr>
+            <tr><td>Branch </td> <td>{{branch}}</td></tr>
+            <tr><td>Semester </td> <td>{{sem}}</td></tr>
+          </table>
+        </div>
+        <form class="form-group" method="post" action="\add_subject\{{course}}\{{branch}}\{{sem}}">
+          <div class="form-group">
+            <label for="subject">Subject</label>
+            <input type="text" class="form-control" name = "subject" value="Subject Name">
+          </div>
+          <div class="form-group">
+            <label for="code">Code</label>
+            <input type="text" class="form-control" name= "code" value="Subject Code">
+          </div>
+          <div class="form-group">
+            <label for="elective">Elective</label>
+            <select class="form-control" name="elective">
+                <option value = "0" selected = "selected"> Not an Elective </option>
+                {% for ele in electives %}
+                    <option value = {{ele}} selected = "selected"> {{electives[ele]}} </option>
+                {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+              <label for="lab">Lab</label>
+              <select class="form-control" name="lab">
+                  <option value = "1"> Yes </option>
+                  <option value = "0" selected = "selected"> No </option>
+              </select>
+          </div>
+          <div class="form-group">
+            <input type="submit" class="btn btn-primary" name="operation" value="Go Back">
+          </div>
+          <div>
+            <input type="submit" class="btn btn-primary" name="operation" value="Add Subject">
+          </div>
+        </form>
+
+        <a href="logout" class="btn btn-primary">LOGOUT</a>
+
+      </div>
+    </div>
+  </body>
+</html>
+
+edit_subject.html
+
+<!DOCTYPE html>
+<html>
+    <head>
+            <meta charset="utf-8">
+            <title>Sem Subjects</title>
+            <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    </head>
+    <body>
+    <div class="container">
+    <div class="jumbotron">
+        <h1>EDITING SUBJECTS</h1>
+
+        <form action="/apply_changes/{{course}}/{{branch}}/{{sem}}" method ="post">
+            <table class = "table" id="myTable">
+                <tr>
+                <div class="form-group">
+                    <th>Subject</th>
+                    <th>Code</th>
+                    <th>Elective</th>
+                    <th>Lab</th>
+                </div>
+                </tr>
+
+                {% for row in subjects %}
+                <tr>
+                <div class="form-group">
+                    <td> <input type="text" class="form-control" name= "subject{{loop.index}}" value="{{ row.subject }}">  </td>
+                    <td> <input type="text" class="form-control" name= "code{{loop.index}}" value="{{ row.code }}"> </td>
+                    <td>
+                        <select class="form-control" name="elective{{loop.index}}">
+                            <option value = "0" {% if "Not an Elective"|string() == row.elective %} selected = "selected" {% endif %} > Not an Elective </option>
+                            {% for ele in electives %}
+                                <option value = {{ele}} {% if electives[ele]|string() == row.elective %} selected = "selected" {% endif %} > {{electives[ele]}} </option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td>
+                        <select class="form-control" name="lab{{loop.index}}">
+                            <option value = "1" {% if "Yes"|string() == row.lab %} selected = "selected" {% endif %} > Yes </option>
+                            <option value = "0" {% if "No"|string() == row.lab %} selected = "selected" {% endif %} > No </option>
+                        </select>
+                    </td>
+                </div>
+                </tr>
+                {% endfor %}
+
+            </table>
+
+            <div class="form-group">
+                <input type="submit" class="btn btn-primary" name="operation" value="APPLY">
+            </div>
+        </form>
+    </div>
+    </div>
+
+    <!-- <script>
+        function update_table(){
+            var tableobj = document.getElementById('myTable');
+            var row_length = tableobj.rows.length;
+
+            var result = [];
+
+            for(var i = 1; i < row_length; i++){
+                var value = {};
+                var row = tableobj.rows.item(i).cells;
+
+                var cell_data = row[0].innerHTML;
+                cell_data = cell_data.substring(63, cell_data.length - 3);
+                value.subject = cell_data;
+
+                cell_data = row[1].innerHTML;
+                cell_data = cell_data.substring(60, cell_data.length - 3);
+                value.code = cell_data;
+
+                cell_data = row[2].innerHTML;
+                console.log(cell_data);
+            }
+
+            alert('hi');
+        }
+    </script>
+     -->
+
+    </body>
+</html>
+
+view_subjects.html
+
+<!DOCTYPE html>
+<html>
+    <head>
+            <meta charset="utf-8">
+            <title>Sem Subjects</title>
+            <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">        
+    </head>
+    <body>
+    <div class="container">
+    <div class="jumbotron">
+        <h1>VIEWING SUBJECTS</h1>
+
+        <form action="/admin" method ="get">
+            <table class = "table" id="myTable">
+                <tr>
+                <div class="form-group">
+                    <th>Subject</th>
+                    <th>Code</th>
+                    <th>Elective</th>
+                    <th>Lab</th>
+                </div>
+                </tr>
+
+                {% for row in subjects %}
+                <tr>
+                <div class="form-group">
+                    <td>{{ row.subject }}</td>
+                    <td>{{ row.code }}</td>
+                    <td>{{ row.elective }}</td>
+                    <td>{{ row.lab }}</td>
+                </div>
+                </tr>
+                {% endfor %}
+    
+            </table>
+
+            <div class="form-group">
+                <input type="submit" class="btn btn-primary" name="operation" value="Go Back">
+            </div>            
+        </form>
+    </div>
+    </div>    
+    </body>
+</html>

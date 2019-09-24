@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="stylesheet" type="text/css" href="css.css">
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+<title> Form</title>
+<style>
+table, th, td {
+  border: 1px solid black;
+  border-collapse:  collapse;
+}
+  #saavn
+{
+text-align: center;
+
+}
+th
+{
+padding: 10px 10px 10px;
+}
+
+</style>
+</head>
+
+<body>
+<!-- <h2>this is my first java script</h2>
+<script type="text/javascript" src = "example.js"></script>
+<p>in this we are going to learn changing the value of src</p>
+<button onclick="document.getElementById('g1').src='pic_bulbon.gif'">turn on the light</button>
+<img id="g1" src="pic_bulboff.gif" style="width: 100px height:100vh">
+<button
+onclick="document.getElememtById('g1').src='pic_bulboff.gif'">turn off light</button> -->
+<div id="saavn">
+<img src="E:\MINI PROJECT\download.jpg" alt="" align="left" width="80px" height="80px" style="margin:10px 40px " >
+<h3 id="ra1"><b>G.V.P COLLEGE OF ENGINEERING(AUTONOMOUS)</b><br></h3>
+          <h4>(approved by AICTE, affilated to JNTU- k.kakinada)<br>
+           madhurawada,visakapatnam - 530 048</h4>
+<p></p>
+           <hr>
+<u><h3>B.Tech/M.Tech/M.C.A- End Semester Examinations</h3></u>
+</div>
+<form  id="g1ra1">
+  <pre>
+    <!-- <p>https://drive.google.com/uc?id=1VBvorxjZ0JYJ2UIzW7OuPWJf1Y5_po4G</p> -->
+<img src="" alt="" align="right" width="120px" height="160px">
+Course/branch:                 <input type="text" name="cou" value="{{course}}">    Semester:      <input type="text" name="sem" value="1">
+
+Month& year of examinations:   <input type="text" name="monthyear" value="{{month}} - {{year}}">    Reg/Supp:      <input type="text" name="reg" value="{{reg}}">
+
+Hall Ticket Number:            <input type="text" name="roll" value="{{roll_no}}">
+
+Name of the cadidate:          <input type="text" name="name" value="{{name}}">
+  </pre>
+
+<table width="100%">
+
+  <tr>
+    <th >Subject Code</th>
+    <th >Subject Name</th>
+  </tr>
+  <tr>
+    <th colspan="2"> Theory </th>
+  </tr>
+  {% if subj %}
+  {% for i in subj %}
+  <tr>
+    <td> {{i.code}}</td>
+    <td>{{i.subject}}</td>
+  </tr>
+  {% endfor %}
+  {% endif %}
+  {% if subj_ele %}
+  {% for i in subj_ele %}
+  <tr>
+    <td>{{i[1]}}</td>
+    <td>{{i[0]}}</td>
+  </tr>
+  {% endfor %}
+  {% endif %}
+  <tr> <th colspan="2"> Labs </th></tr>
+  {% if lab %}
+  {% for i in lab %}
+  <tr>
+    <td> {{i.code}}</td>
+    <td>{{i.subject}}</td>
+  </tr>
+  {% endfor %}
+  {% endif %}
+
+  {% if lab_ele %}
+  {% for i in lab_ele %}
+  <tr>
+    <td>{{i[1]}}</td>
+    <td>{{i[0]}}</td>
+  </tr>
+  {% endfor %}
+  {% endif %}
+</table>
+</form>
+</body>
+</html>

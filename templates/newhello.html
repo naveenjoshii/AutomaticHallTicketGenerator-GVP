@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title>Project</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+  <body>
+
+    <div class="container">
+      <div class="jumbotron">
+        {% if sub%}
+        <table class="table">
+        <thead class="thead-dark">
+      <tr>
+        <th scope="col">SUBJECT</th>
+        <th scope="col" style="text-align:center">CODE</th>
+      </tr>
+    </thead>
+    <tbody>
+       {% for l in sub %}
+      <tr>
+        <td style="text-align:left"> {{l.subject}}</td>
+        <td style="text-align:center"> {{l.code}}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+    {% if eleres %}
+    <form action = "{{url_for('check',sub=sub|list,labs=labs|list, ele_res=eleres|list, lab_res=labres|list)}}" method = "post">
+    <table class="table">
+      {% for ele_name in eleres %}
+      <thead class="thead-light">
+        <tr >
+          <th scope="col" colspan ="2"> {{ ele_name }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for obj in eleres[ele_name] %}
+        <tr>
+          <td style="text-align:left">
+              <input type="radio" name="{{ ele_name }}" value="{{ obj }}"> {{ obj[0] }}
+              </td>
+          <td style="text-align:center">
+              {{obj[1]}}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      {% endfor %}
+  </table>
+  {% endif %}
+
+  {% if labs %}
+  <table class="table">
+  <!-- <thead class="thead-dark">
+<tr>
+  <th scope="col">LAB</th>
+  <th scope="col" style="text-align:center">CODE</th>
+</tr>
+</thead> -->
+<tbody>
+ {% for l in labs %}
+<tr>
+  <td style="text-align:left"> {{l.subject}}</td>
+  <td style="text-align:center"> {{l.code}}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{% endif %}
+
+<table class="table">
+  {% if labres %}
+  <thead class="thead-light">
+    {% for elecsub in labres %}
+    <tr >
+      <th scope="col" colspan ="2"> {{ elecsub }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for obj in labres[elecsub] %}
+    <tr>
+      <td style="text-align:left">
+          <input type="radio" name="{{ elecsub }}" value="{{obj}}"> {{obj[0]}}
+          </td>
+      <td style="text-align:center">{{obj[1]}}
+</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endfor %}
+{% endif %}
+
+
+
+<input  class="btn btn-primary"type = "submit" value = "submit" />
+
+</form>
+  </body>
+</html>

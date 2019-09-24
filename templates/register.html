@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title>Project</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+  <body>
+
+    <div class="container">
+      <div class="jumbotron">
+
+        <h1>Automatic Hallticket Generator</h1>
+        <h2>Registration</h2>
+        {% if error %}
+         <p><strong>Error:</strong> {{ error }}
+      {% endif %}
+      {% if psdError %}
+      <p><strong>Password Error</strong> {{ psdError }}
+      {% endif %}
+        <form class="form-group" method="POST" action="http://localhost:5000/register">
+          <label for="userrol">Roll Number</label>
+          <input type="text" class="form-control" name="userrol" placeholder="roll number">
+          <label for="userpsw">Password</label>
+          <input type="password" class="form-control" name="userpsw" placeholder="password">
+          <label for="username">Full Name</label>
+          <input type="text" class="form-control" name="username" placeholder="your name">
+          <label for="useremail">Email</label>
+          <input type="email" class="form-control" name="useremail" placeholder="email">
+          <p></p>
+        <input type="submit" class="btn btn-primary" name="login" value="REGISTER">
+          </form>
+      </div>
+
+    </div>
+
+  </body>
+</html>
