@@ -1,4 +1,4 @@
 # AutomaticHallTicketGenerator-GVP
 
 
-This application will give you the details of your subjects in that semester if you give your roll number
+This application will generates the hallticket as a .pdf by asking your roll number and then respective subjects enrolled by you in that semester
